@@ -1,3 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1.0" />
+<title>Human Verification</title>
+
+<style>
+*{
+  margin:0;
+  padding:0;
+  box-sizing:border-box;
+}
+
+body{
+  min-height:100vh;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  background:
+    radial-gradient(circle at top,#111827,#020617 75%);
+  font-family:Arial,Helvetica,sans-serif;
+  overflow:hidden;
+  color:white;
+}
+
+.card{
+  width:480px;
+  padding:34px;
+  border-radius:28px;
+  background:rgba(255,255,255,0.05);
+  border:1px solid rgba(255,255,255,0.08);
+  backdrop-filter:blur(14px);
+  box-shadow:0 20px 60px rgba(0,0,0,0.5);
+}
+
+.title{
+  font-size:30px;
+  font-weight:700;
+  margin-bottom:10px;
+}
+
+.sub{
+  color:#94a3b8;
+  line-height:1.6;
+  margin-bottom:18px;
+}
+
+/* PROXIMITY */
+.prox-wrap{
+  margin-bottom:18px;
+}
+
+.prox-track{
+  height:6px;
+  background:#1e293b;
+  border-radius:3px;
+  overflow:hidden;
+}
+
+.prox-fill{
+  height:100%;
+  width:0%;
+  border-radius:3px;
+  background:linear-gradient(90deg,#6366f1,#22c55e);
+  transition:width .08s;
+}
+
+.prox-hint{
+  font-size:12px;
+  color:#64748b;
+  margin-top:6px;
+}
+
+/* SLIDER AREA */
+.slider-area{
+  position:relative;
+  width:100%;
+  height:180px;
+  border-radius:26px;
+  overflow:hidden;
+  background:
+    linear-gradient(180deg,#0f172a,#111827);
+  border:1px solid rgba(255,255,255,0.08);
+}
+
+/* TARGET */
+.target{
+  position:absolute;
+  width:110px;
+  height:110px;
+  border-radius:28px;
+  border:4px dashed #22c55e;
+  background:rgba(34,197,94,0.15);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:38px;
+  top:35px;
+  left:180px;
+  pointer-events:none;
+  box-shadow:0 0 25px rgba(34,197,94,0.25);
+  animation:targetMove 5s ease-in-out infinite;
+}
+
+.target.near{
+  border-style:solid;
+  background:rgba(34,197,94,0.28);
+  box-shadow:0 0 40px rgba(34,197,94,0.5);
+}
+
+@keyframes targetMove{
+  0%,100%{
+    transform:translateX(0);
+  }
+  50%{
+    transform:translateX(-90px);
+  }
+}
+
+/* DRAG ICON */
+.drag-icon{
+  position:absolute;
+  width:82px;
+  height:82px;
+  border-radius:24px;
+  background:
+    linear-gradient(135deg,#ffffff,#dbeafe);
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  font-size:38px;
+  cursor:grab;
+  user-select:none;
+  touch-action:none;
+  z-index:10;
+  box-shadow:0 18px 40px rgba(0,0,0,0.5);
+  left:30px;
+  top:48px;
+  transition:
+    transform .15s,
+    box-shadow .2s;
+}
+
+.drag-icon:active{
+  cursor:grabbing;
+  transform:scale(1.08);
+}
+
+.drag-icon.verified{
+  background:
+    linear-gradient(135deg,#22c55e,#16a34a) !important;
+  color:white;
+}
+
+/* STATUS */
+.status{
+  min-height:30px;
+  margin-top:20px;
+  font-size:16px;
+  font-weight:600;
+  text-align:center;
+}
+
+.ok{
+  color:#22c55e;
+}
+
+.fail{
+  color:#ef4444;
+}
+
+/* BUTTON */
+.reset-btn{
+  width:100%;
+  margin-top:14px;
+  padding:12px;
+  border:none;
+  border-radius:14px;
+  background:rgba(255,255,255,0.06);
+  color:#94a3b8;
+  cursor:pointer;
+  font-size:14px;
+  transition:.2s;
+}
+
+.reset-btn:hover{
+  background:rgba(255,255,255,0.1);
+}
+</style>
+</head>
+
+<body>
+
+<div class="card">
+
+  <div class="title">
+    Human Verification
+  </div>
+
+  <div class="sub">
+    Drag the 🧩 cube into the moving green zone.
+  </div>
+
+  <div class="prox-wrap">
+    <div class="prox-track">
+      <div class="prox-fill" id="proxFill"></div>
+    </div>
+
+    <div class="prox-hint" id="proxHint">
+      Drag the cube toward the green zone →
+    </div>
+  </div>
+
+  <div class="slider-area" id="sliderArea">
+
+    <!-- TARGET -->
+    <div class="target" id="target">
+      ✅
+    </div>
+
+    <!-- DRAG ICON -->
+    <div class="drag-icon" id="dragIcon">
+      🧩
+    </div>
+
+  </div>
+
+  <div class="status" id="statusEl"></div>
+
+  <button class="reset-btn" onclick="reset()">
+    ↺ New Challenge
+  </button>
+
+</div>
+
+<script>
+// DOM
+const dragIcon   = document.getElementById('dragIcon');
+const target     = document.getElementById('target');
+const sliderArea = document.getElementById('sliderArea');
+const statusEl   = document.getElementById('statusEl');
+const proxFill   = document.getElementById('proxFill');
+const proxHint   = document.getElementById('proxHint');
+
+// STATE
+let dragging = false;
+let verified = false;
+let offsetX  = 0;
+let offsetY  = 0;
+
+// START DRAG
+function startDrag(e){
+
+  if(verified) return;
+
+  e.preventDefault();
+
+  dragging = true;
+
+  const rect = dragIcon.getBoundingClientRect();
+
+  const cx = e.touches
+    ? e.touches[0].clientX
+    : e.clientX;
+
+  const cy = e.touches
+    ? e.touches[0].clientY
+    : e.clientY;
+
+  offsetX = cx - rect.left;
+  offsetY = cy - rect.top;
+}
+
+// MOVE
+function moveDrag(e){
+
+  if(!dragging || verified) return;
+
+  e.preventDefault();
+
+  const areaRect = sliderArea.getBoundingClientRect();
+
+  const cx = e.touches
+    ? e.touches[0].clientX
+    : e.clientX;
+
+  const cy = e.touches
+    ? e.touches[0].clientY
+    : e.clientY;
+
+  let x = cx - areaRect.left - offsetX;
+  let y = cy - areaRect.top  - offsetY;
+
+  x = Math.max(
+    0,
+    Math.min(
+      x,
+      sliderArea.offsetWidth - dragIcon.offsetWidth
+    )
+  );
+
+  y = Math.max(
+    0,
+    Math.min(
+      y,
+      sliderArea.offsetHeight - dragIcon.offsetHeight
+    )
+  );
+
+  dragIcon.style.left = x + 'px';
+  dragIcon.style.top  = y + 'px';
+
+  updateProximity(x,y);
+}
+
+// END
 function endDrag(){
 
   if(!dragging || verified) return;
@@ -73,3 +390,123 @@ function endDrag(){
     }
   }
 }
+
+
+// PROXIMITY
+function updateProximity(x,y){
+
+  const areaRect   = sliderArea.getBoundingClientRect();
+  const targetRect = target.getBoundingClientRect();
+
+  const targetX =
+    targetRect.left -
+    areaRect.left +
+    targetRect.width / 2;
+
+  const targetY =
+    targetRect.top -
+    areaRect.top +
+    targetRect.height / 2;
+
+  const iconX = x + 41;
+  const iconY = y + 41;
+
+  const distance = Math.sqrt(
+    Math.pow(iconX - targetX,2) +
+    Math.pow(iconY - targetY,2)
+  );
+
+  const maxDistance = 220;
+
+  const percent = Math.max(
+    0,
+    100 - (distance / maxDistance * 100)
+  );
+
+  proxFill.style.width =
+    percent + '%';
+
+  if(percent > 85){
+
+    target.classList.add('near');
+
+    proxHint.innerHTML =
+      '🔓 Release now!';
+
+  }else if(percent > 55){
+
+    target.classList.add('near');
+
+    proxHint.innerHTML =
+      'Almost there...';
+
+  }else{
+
+    target.classList.remove('near');
+
+    proxHint.innerHTML =
+      'Drag the cube toward the green zone →';
+  }
+}
+
+// RESET
+function reset(){
+
+  verified = false;
+
+  dragIcon.className = 'drag-icon';
+
+  dragIcon.innerHTML = '🧩';
+
+  dragIcon.style.left = '30px';
+  dragIcon.style.top  = '48px';
+
+  dragIcon.style.pointerEvents = 'auto';
+
+  target.style.animationPlayState = 'running';
+
+  proxFill.style.width = '0%';
+
+  proxHint.innerHTML =
+    'Drag the cube toward the green zone →';
+
+  statusEl.innerHTML = '';
+  statusEl.className = 'status';
+}
+
+// EVENTS
+dragIcon.addEventListener(
+  'mousedown',
+  startDrag
+);
+
+document.addEventListener(
+  'mousemove',
+  moveDrag
+);
+
+document.addEventListener(
+  'mouseup',
+  endDrag
+);
+
+dragIcon.addEventListener(
+  'touchstart',
+  startDrag,
+  { passive:false }
+);
+
+document.addEventListener(
+  'touchmove',
+  moveDrag,
+  { passive:false }
+);
+
+document.addEventListener(
+  'touchend',
+  endDrag
+);
+</script>
+
+</body>
+</html>
