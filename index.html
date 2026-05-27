@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Slider CAPTCHA</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+body{
+  min-height:100vh;
+  background:#0d0d0d;
+  display:flex;align-items:center;justify-content:center;
+  font-family:'Space Grotesk',sans-serif;
+  color:#fff;
+}
+.card{
+  background:#161616;
+  border:1px solid #2a2a2a;
+  border-radius:16px;
+  padding:32px;
+  width:420px;
+  box-shadow:0 24px 60px rgba(0,0,0,0.5);
+}
+.card-title{
+  font-size:13px;font-weight:600;letter-spacing:2px;
+  text-transform:uppercase;color:#555;margin-bottom:24px;
+  display:flex;align-items:center;gap:8px;
+}
+.card-title::before{content:'';width:8px;height:8px;border-radius:50%;background:#22c55e;display:inline-block;}
+h2{font-size:1.4rem;font-weight:700;margin-bottom:6px;color:#f0f0f0;}
+p{font-size:13px;color:#666;margin-bottom:24px;line-height:1.6;}
+
+/* Puzzle canvas area */
+.puzzle-wrap{
+  position:relative;
+  width:356px;height:160px;
+  border-radius:10px;overflow:hidden;
+  margin-bottom:16px;
+  border:1px solid #2a2a2a;
+}
+#bgCanvas{display:block;width:100%;height:100%;}
+#pieceCanvas{
+  position:absolute;top:0;left:0;
+  pointer-events:none;
+  width:100%;height:100%;
+}
+.hole-outline{
+  position:absolute;
+  border:2px dashed rgba(255,255,255,0.25);
+  border-radius:4px;
+  pointer-events:none;
+}
+
+/* Track */
+.track-wrap{
+  position:relative;
+  height:48px;
+  background:#1e1e1e;
+  border-radius:24px;
+  border:1px solid #2a2a2a;
+  margin-bottom:16px;
+  display:flex;align-items:center;
+  overflow:hidden;
+}
+.track-fill{
+  position:absolute;left:0;top:0;bottom:0;
+  background:linear-gradient(90deg,#22c55e,#16a34a);
+  border-radius:24px;
+  width:48px;
+  transition:none;
+  opacity:0.3;
+}
+.track-hint{
+  position:absolute;inset:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:12px;color:#444;pointer-events:none;
+  letter-spacing:0.5px;
+  transition:opacity 0.3s;
+}
+.thumb{
+  position:absolute;left:4px;
+  width:40px;height:40px;border-radius:50%;
+  background:#fff;
+  display:flex;align-items:center;justify-content:center;
+  cursor:grab;z-index:2;
+  box-shadow:0 2px 12px rgba(0,0,0,0.4);
+  touch-action:none;user-select:none;
+}
+.thumb:active{cursor:grabbing;}
+.thumb svg{width:18px;height:18px;}
+
+/* Status */
+.status{
+  font-size:13px;text-align:center;
+  padding:10px 16px;border-radius:8px;
+  display:none;
+  font-weight:500;
+}
+.status.ok{display:block;background:rgba(34,197,94,0.1);color:#22c55e;border:1px solid rgba(34,197,94,0.2);}
+.status.fail{display:block;background:rgba(239,68,68,0.1);color:#ef4444;border:1px solid rgba(239,68,68,0.2);}
+
+/* refresh btn */
+.refresh{
+  display:flex;align-items:center;justify-content:center;gap:6px;
+  margin-top:14px;
+  font-size:12px;color:#444;cursor:pointer;
+  transition:color 0.2s;
+  border:none;background:none;width:100%;padding:6px;
+}
+.refresh:hover{color:#888;}
+.refresh svg{width:14px;height:14px;}
+
+/* shake anim */
+@keyframes shake{
+  0%,100%{transform:translateX(0)}
+  20%{transform:translateX(-6px)}
+  40%{transform:translateX(6px)}
+  60%{transform:translateX(-4px)}
+  80%{transform:translateX(4px)}
+}
+.shake{animation:shake 0.4s ease;}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="card-title">Security Check</div>
+  <h2>Prove you're human</h2>
+  <p>Drag the slider to fit the puzzle piece into the gap. Bots need not apply.</p>
+
+  <div class="puzzle-wrap" id="puzzleWrap">
+    <canvas id="bgCanvas" width="356" height="160"></canvas>
+    <canvas id="pieceCanvas" width="356" height="160"></canvas>
+    <div class="hole-outline" id="holeOutline"></div>
+  </div>
+
+  <div class="track-wrap" id="trackWrap">
+    <div class="track-fill" id="trackFill"></div>
+    <div class="track-hint" id="trackHint">→ Slide to complete</div>
+    <div class="thumb" id="thumb">
+      <svg viewBox="0 0 24 24" fill="none">
+        <path d="M9 6l6 6-6 6" stroke="#333" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>
+  </div>
+
+  <div class="status" id="status"></div>
+
+  <button class="refresh" id="refreshBtn" onclick="init()">
+    <svg viewBox="0 0 24 24" fill="none"><path d="M1 4v6h6M23 20v-6h-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    New puzzle
+  </button>
+</div>
+
+<script>
+// Constants
+const TRACK_W = 356, TRACK_H = 160;
+const PIECE_W = 52, PIECE_H = 52;
+const THUMB_W = 40, PADDING = 4;
+const MAX_SLIDE = 356 - 48 - 8; // track width - thumb - margins
+const TOLERANCE = 8; // px tolerance for match
+
+// State
+let targetX, targetY, pieceSliderX, isDragging, startClientX, startThumbX;
+let dragSamples = [], dragStartTime;
+let solved = false;
+
+const bgCanvas = document.getElementById('bgCanvas');
+const pieceCanvas = document.getElementById('pieceCanvas');
+const bgCtx = bgCanvas.getContext('2d');
+const pcCtx = pieceCanvas.getContext('2d');
+const holeOutline = document.getElementById('holeOutline');
+const thumb = document.getElementById('thumb');
+const trackFill = document.getElementById('trackFill');
+const trackHint = document.getElementById('trackHint');
+const statusEl = document.getElementById('status');
+const trackWrap = document.getElementById('trackWrap');
+
+function rand(min, max){ return Math.floor(Math.random()*(max-min))+min; }
+
+function makePiecePath(ctx, x, y, w, h){
+  // Jigsaw-style notch on right side
+  const r = 10;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x+w-r, y);
+  ctx.bezierCurveTo(x+w-r, y-r*1.2, x+w+r*0.8, y-r*1.2, x+w+r*0.8, y+h/2-r);
+  ctx.bezierCurveTo(x+w+r*0.8, y+h/2+r, x+w-r, y+h/2+r, x+w-r, y+h);
+  ctx.lineTo(x, y+h);
+  ctx.closePath();
+}
+
+function drawScene(slideX){
+  bgCtx.clearRect(0,0,TRACK_W,TRACK_H);
+  pcCtx.clearRect(0,0,TRACK_W,TRACK_H);
+
+  // BG gradient
+  const grad = bgCtx.createLinearGradient(0,0,TRACK_W,TRACK_H);
+  grad.addColorStop(0,'#1a1a2e');
+  grad.addColorStop(1,'#16213e');
+  bgCtx.fillStyle = grad;
+  bgCtx.fillRect(0,0,TRACK_W,TRACK_H);
+
+  // Grid lines (subtle)
+  bgCtx.strokeStyle='rgba(255,255,255,0.03)';
+  bgCtx.lineWidth=1;
+  for(let x=0;x<TRACK_W;x+=20){
+    bgCtx.beginPath();bgCtx.moveTo(x,0);bgCtx.lineTo(x,TRACK_H);bgCtx.stroke();
+  }
+  for(let y=0;y<TRACK_H;y+=20){
+    bgCtx.beginPath();bgCtx.moveTo(0,y);bgCtx.lineTo(TRACK_W,y);bgCtx.stroke();
+  }
+
+  // Random shapes (decorative)
+  bgCtx.save();
+  bgCtx.globalAlpha=0.08;
+  bgCtx.fillStyle='#6366f1';
+  bgCtx.beginPath();bgCtx.arc(280,40,50,0,Math.PI*2);bgCtx.fill();
+  bgCtx.fillStyle='#22c55e';
+  bgCtx.beginPath();bgCtx.arc(60,120,35,0,Math.PI*2);bgCtx.fill();
+  bgCtx.restore();
+
+  // Draw hole on bg
+  bgCtx.save();
+  makePiecePath(bgCtx, targetX, targetY, PIECE_W, PIECE_H);
+  bgCtx.fillStyle='rgba(0,0,0,0.5)';
+  bgCtx.fill();
+  bgCtx.strokeStyle='rgba(255,255,255,0.15)';
+  bgCtx.lineWidth=1.5;
+  bgCtx.stroke();
+  bgCtx.restore();
+
+  // Convert slider position → canvas X
+  // slider 0..MAX_SLIDE maps to pieceCanvas 0..(TRACK_W - PIECE_W - 20)
+  const pieceCanvasX = Math.round(slideX / MAX_SLIDE * (TRACK_W - PIECE_W - 20));
+
+  // Draw sliding piece on pieceCanvas
+  pcCtx.save();
+  makePiecePath(pcCtx, pieceCanvasX, targetY, PIECE_W, PIECE_H);
+  pcCtx.fillStyle='rgba(255,255,255,0.9)';
+  pcCtx.fill();
+  // Texture lines on piece
+  pcCtx.clip();
+  pcCtx.strokeStyle='rgba(0,0,0,0.08)';
+  pcCtx.lineWidth=4;
+  for(let i=-20;i<PIECE_W+PIECE_H;i+=12){
+    pcCtx.beginPath();
+    pcCtx.moveTo(pieceCanvasX+i, targetY);
+    pcCtx.lineTo(pieceCanvasX+i-PIECE_H, targetY+PIECE_H);
+    pcCtx.stroke();
+  }
+  pcCtx.restore();
+
+  // Check match: piece canvas X ≈ targetX?
+  const diff = Math.abs(pieceCanvasX - targetX);
+  return diff;
+}
+
+function setThumbPos(x){
+  x = Math.max(0, Math.min(x, MAX_SLIDE));
+  pieceSliderX = x;
+  thumb.style.left = (PADDING + x) + 'px';
+  trackFill.style.width = (THUMB_W + x) + 'px';
+  trackFill.style.opacity = 0.15 + (x/MAX_SLIDE)*0.5;
+  const diff = drawScene(x);
+  return diff;
+}
+
+function showStatus(type, msg){
+  statusEl.className = 'status ' + type;
+  statusEl.textContent = msg;
+}
+
+function clearStatus(){
+  statusEl.className = 'status';
+}
+
+// Anti-bot: analyze drag movement
+function analyzeMovement(samples){
+  if(samples.length < 3) return false; // too few = suspicious
+  const duration = samples[samples.length-1].t - samples[0].t;
+  if(duration < 200) return false; // too fast = bot
+
+  // Check for human jitter: variance in velocity
+  const velocities = [];
+  for(let i=1;i<samples.length;i++){
+    const dt = samples[i].t - samples[i-1].t;
+    if(dt > 0) velocities.push((samples[i].x - samples[i-1].x)/dt);
+  }
+  if(velocities.length < 2) return false;
+  const mean = velocities.reduce((a,b)=>a+b,0)/velocities.length;
+  const variance = velocities.reduce((s,v)=>s+(v-mean)**2,0)/velocities.length;
+  // Bots = near-zero variance (perfectly smooth). Humans = some variance.
+  if(variance < 0.02) return false; // too smooth = bot
+
+  return true;
+}
+
+function onDragEnd(){
+  if(!isDragging || solved) return;
+  isDragging = false;
+  thumb.style.transition = '';
+
+  const isHuman = analyzeMovement(dragSamples);
+  const diff = Math.abs(pieceSliderX / MAX_SLIDE * (TRACK_W - PIECE_W - 20) - targetX);
+
+  if(diff <= TOLERANCE && isHuman){
+    solved = true;
+    thumb.style.background = '#22c55e';
+    thumb.innerHTML = `<svg viewBox="0 0 24 24" fill="none"><path d="M5 13l4 4L19 7" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+    trackFill.style.background = 'linear-gradient(90deg,#22c55e,#16a34a)';
+    trackFill.style.opacity = '0.6';
+    trackHint.style.opacity = '0';
+    showStatus('ok', '✓ Verified! You are human.');
+    if(navigator.vibrate) navigator.vibrate([30,20,80]);
+    beep();
+  } else {
+    // Wrong position or bot-like movement
+    const reason = !isHuman ? 'Movement too robotic. Try again.' : 'Wrong position. Try again.';
+    showStatus('fail', '✗ ' + reason);
+    trackWrap.classList.add('shake');
+    setTimeout(()=>trackWrap.classList.remove('shake'), 500);
+    if(navigator.vibrate) navigator.vibrate([80,30,80]);
+    // Reset thumb
+    thumb.style.transition = 'left 0.3s cubic-bezier(.25,.8,.25,1)';
+    trackFill.style.transition = 'width 0.3s,opacity 0.3s';
+    setThumbPos(0);
+    setTimeout(()=>{ trackFill.style.transition = ''; }, 350);
+  }
+}
+
+// Drag events
+thumb.addEventListener('mousedown', e => {
+  if(solved) return;
+  e.preventDefault();
+  isDragging = true;
+  startClientX = e.clientX;
+  startThumbX = pieceSliderX;
+  dragSamples = [{x: pieceSliderX, t: Date.now()}];
+  dragStartTime = Date.now();
+  clearStatus();
+  trackHint.style.opacity = '0';
+});
+
+document.addEventListener('mousemove', e => {
+  if(!isDragging) return;
+  const dx = e.clientX - startClientX;
+  const nx = startThumbX + dx;
+  setThumbPos(nx);
+  dragSamples.push({x: Math.max(0,Math.min(nx,MAX_SLIDE)), t: Date.now()});
+});
+
+document.addEventListener('mouseup', onDragEnd);
+
+thumb.addEventListener('touchstart', e => {
+  if(solved) return;
+  e.preventDefault();
+  isDragging = true;
+  startClientX = e.touches[0].clientX;
+  startThumbX = pieceSliderX;
+  dragSamples = [{x: pieceSliderX, t: Date.now()}];
+  clearStatus();
+  trackHint.style.opacity = '0';
+}, {passive:false});
+
+document.addEventListener('touchmove', e => {
+  if(!isDragging) return;
+  e.preventDefault();
+  const dx = e.touches[0].clientX - startClientX;
+  const nx = startThumbX + dx;
+  setThumbPos(nx);
+  dragSamples.push({x: Math.max(0,Math.min(nx,MAX_SLIDE)), t: Date.now()});
+},{passive:false});
+
+document.addEventListener('touchend', onDragEnd);
+
+// Beep
+function beep(){
+  try{
+    const ctx = new (window.AudioContext||window.webkitAudioContext)();
+    [660,880,1100].forEach((f,i)=>{
+      const o=ctx.createOscillator(),g=ctx.createGain();
+      o.connect(g);g.connect(ctx.destination);
+      o.frequency.value=f;g.gain.setValueAtTime(0.3,ctx.currentTime+i*0.1);
+      g.gain.exponentialRampToValueAtTime(0.001,ctx.currentTime+i*0.1+0.15);
+      o.start(ctx.currentTime+i*0.1);o.stop(ctx.currentTime+i*0.1+0.2);
+    });
+  }catch(e){}
+}
+
+// Update hole outline CSS position
+function updateHoleOutline(){
+  const scaleX = 356 / TRACK_W;
+  holeOutline.style.left = (targetX * scaleX) + 'px';
+  holeOutline.style.top = targetY + 'px';
+  holeOutline.style.width = PIECE_W + 'px';
+  holeOutline.style.height = PIECE_H + 'px';
+}
+
+function init(){
+  solved = false;
+  pieceSliderX = 0;
+  isDragging = false;
+  dragSamples = [];
+  thumb.style.left = PADDING + 'px';
+  thumb.style.transition = '';
+  thumb.style.background = '#fff';
+  thumb.innerHTML = `<svg viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="#333" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  trackFill.style.width = '48px';
+  trackFill.style.opacity = '0.3';
+  trackFill.style.background = 'linear-gradient(90deg,#22c55e,#16a34a)';
+  trackHint.style.opacity = '1';
+  clearStatus();
+
+  // Random target position (keep away from left edge so piece doesn't start there)
+  targetX = rand(120, TRACK_W - PIECE_W - 30);
+  targetY = rand(20, TRACK_H - PIECE_H - 10);
+
+  updateHoleOutline();
+  drawScene(0);
+}
+
+init();
+</script>
+</body>
+</html>
